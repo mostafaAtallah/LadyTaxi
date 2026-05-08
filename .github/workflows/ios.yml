@@ -10,11 +10,11 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      # 1. Checkout the repository
+      # 1. Checkout the source code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Install certificate and provisioning profiles
+      # 2. Install certificate and profiles
       - name: Install Signing Certificates
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
@@ -22,32 +22,26 @@ jobs:
           CLIENT_PROVISION_PROFILE_BASE64: ${{ secrets.CLIENT_PROVISION_PROFILE_BASE64 }}
           CAPTAIN_PROVISION_PROFILE_BASE64: ${{ secrets.CAPTAIN_PROVISION_PROFILE_BASE64 }}
         run: |
-          # Define temporary variables
           CERT_PATH=$RUNNER_TEMP/build_certificate.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/app.keychain-db
 
-          # Decode the P12 certificate
+          # Decode P12
           echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > $CERT_PATH
 
-          # Create the Provisioning Profiles directory
+          # Setup Provisioning Profiles folder
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-
-          # Decode provisioning profiles (naming them 'client' and 'captain' for easy reference)
           echo "$CLIENT_PROVISION_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/client.mobileprovision
           echo "$CAPTAIN_PROVISION_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/captain.mobileprovision
 
-          # Create and unlock a temporary keychain
+          # Create and unlock keychain
           security create-keychain -p "" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "" $KEYCHAIN_PATH
 
-          # Import the certificate into the temporary keychain
-          security import $CERT_PATH \
-            -P "$P12_PASSWORD" \
-            -A -t cert -f pkcs12 \
-            -k $KEYCHAIN_PATH
-
-          # CRITICAL: Fix for the "User interaction is not allowed" error
+          # Import certificate
+          security import $CERT_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          
+          # Allow xcodebuild to bypass security popups
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" $KEYCHAIN_PATH
           security default-keychain -s $KEYCHAIN_PATH
 
@@ -59,7 +53,7 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             CODE_SIGN_STYLE=Manual \
-            PROVISIONING_PROFILE_SPECIFIER="client" \
+            PROVISIONING_PROFILE="25448031-790a-4014-bbb3-c56eec91e4ea" \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             build
 
@@ -71,6 +65,6 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             CODE_SIGN_STYLE=Manual \
-            PROVISIONING_PROFILE_SPECIFIER="captain" \
+            PROVISIONING_PROFILE="87e946e7-9046-4ac5-8b16-b599444d0704" \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             build
