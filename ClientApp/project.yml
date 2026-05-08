@@ -1,0 +1,49 @@
+# project.yml
+name: ClientApp
+
+options:
+  xcodeVersion: 15.2
+  bundleIdPrefix: com.example
+  deploymentTarget: "17.0"
+
+settings:
+  base:
+    SWIFT_VERSION: 5.9
+    GENERATE_INFOPLIST_FILE: YES
+    PRODUCT_NAME: ClientApp
+    MARKETING_VERSION: 1.0.0
+    CURRENT_PROJECT_VERSION: 1
+
+targets:
+  ClientApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ClientApp
+        excludes:
+          - ClientApp/Assets.xcassets
+          - ClientApp/Preview Content
+          - ClientApp.xcodeproj
+          - ClientAppTests
+          - ClientAppUITests
+    resources:
+      - path: ClientApp/Assets.xcassets
+      - path: ClientApp/Preview\ Content
+    dependencies: []
+
+  ClientAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ClientAppTests
+    dependencies:
+      - target: ClientApp
+
+  ClientAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ClientAppUITests
+    dependencies:
+      - target: ClientApp
