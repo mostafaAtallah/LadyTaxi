@@ -1,0 +1,25 @@
+ name: iOS Build
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # CLIENT APP
+      - name: Build Client App
+        run: |
+          cd ClientApp
+          xcodebuild -scheme ClientApp -sdk iphoneos build
+
+      # CAPTAIN APP
+      - name: Build Captain App
+        run: |
+          cd CaptainApp
+          xcodebuild -scheme CaptainApp -sdk iphoneos build
