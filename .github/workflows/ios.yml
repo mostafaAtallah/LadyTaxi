@@ -1,4 +1,4 @@
- name: iOS Build
+name: iOS Build
 
 on:
   push:
@@ -12,13 +12,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # CLIENT APP
       - name: Build Client App
         run: |
           cd ClientApp
           xcodebuild -scheme ClientApp -sdk iphoneos build
 
-      # CAPTAIN APP
       - name: Build Captain App
         run: |
           cd CaptainApp
