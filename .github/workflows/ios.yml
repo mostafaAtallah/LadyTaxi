@@ -136,7 +136,7 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>provisioningProfiles</key>
             <dict>
               <key>com.ladytaxi.ClientApp</key>
@@ -197,10 +197,10 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>provisioningProfiles</key>
             <dict>
-              <key>com.ladyTaxi.CaptainApp</key>
+              <key>com.ladytaxi.CaptainApp</key>
               <string>${CAPTAIN_PROFILE_NAME}</string>
             </dict>
             <key>signingCertificate</key>
