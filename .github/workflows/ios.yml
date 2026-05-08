@@ -78,6 +78,21 @@ jobs:
           security default-keychain -s "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
+          echo "SIGNING_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Validate imported signing identity
+        run: |
+          set -euo pipefail
+
+          identities="$(security find-identity -v -p codesigning "$SIGNING_KEYCHAIN" || true)"
+          echo "$identities"
+
+          if ! echo "$identities" | grep -q "Apple Distribution"; then
+            echo "No Apple Distribution signing identity was found in BUILD_CERTIFICATE_BASE64."
+            echo "Re-export the .p12 from Keychain Access using the Apple Distribution certificate and its private key."
+            exit 1
+          fi
+
       - name: Read provisioning profile details
         run: |
           set -euo pipefail
@@ -107,6 +122,7 @@ jobs:
             DEVELOPMENT_TEAM="$DEVELOPER_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN" \
             PROVISIONING_PROFILE="$CLIENT_PROFILE_UUID" \
             PROVISIONING_PROFILE_SPECIFIER="$CLIENT_PROFILE_NAME"
 
@@ -167,6 +183,7 @@ jobs:
             DEVELOPMENT_TEAM="$DEVELOPER_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN" \
             PROVISIONING_PROFILE="$CAPTAIN_PROFILE_UUID" \
             PROVISIONING_PROFILE_SPECIFIER="$CAPTAIN_PROFILE_NAME"
 
