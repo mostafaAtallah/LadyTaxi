@@ -634,6 +634,7 @@
 				DEVELOPMENT_TEAM = 2X73TPG2SN;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is needed to capture your verification documents.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Captain location is used to guide you to rider pickup points.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -667,6 +668,7 @@
 				DEVELOPMENT_TEAM = 2X73TPG2SN;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is needed to capture your verification documents.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Captain location is used to guide you to rider pickup points.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
