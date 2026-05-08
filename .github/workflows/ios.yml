@@ -1,72 +1,36 @@
-name: iOS Build (Client + Captain)
+# 2. Install certificate + provisioning profiles
+- name: Install Signing Certificates
+env:
+  BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+  P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+  CLIENT_PROVISION_PROFILE_BASE64: ${{ secrets.CLIENT_PROVISION_PROFILE_BASE64 }}
+  CAPTAIN_PROVISION_PROFILE_BASE64: ${{ secrets.CAPTAIN_PROVISION_PROFILE_BASE64 }}
+run: |
+  # Define paths
+  CERT_PATH=$RUNNER_TEMP/build_certificate.p12
+  KEYCHAIN_PATH=$RUNNER_TEMP/app.keychain-db
 
-on:
-  push:
-    branches: [ main ]
+  # 1. Decode certificate (using --decode without -o for better compatibility)
+  echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > $CERT_PATH
 
-jobs:
-  build:
-    runs-on: macos-latest
+  # 2. Decode provisioning profiles
+  mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+  echo "$CLIENT_PROVISION_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/client.mobileprovision
+  echo "$CAPTAIN_PROVISION_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/captain.mobileprovision
 
-    steps:
-      # 1. Checkout code
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  # 3. Create and prepare temporary keychain
+  security create-keychain -p "" $KEYCHAIN_PATH
+  security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+  security unlock-keychain -p "" $KEYCHAIN_PATH
 
-      # 2. Install certificate + provisioning profiles
-      - name: Install Signing Certificates
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          CLIENT_PROVISION_PROFILE_BASE64: ${{ secrets.CLIENT_PROVISION_PROFILE_BASE64 }}
-          CAPTAIN_PROVISION_PROFILE_BASE64: ${{ secrets.CAPTAIN_PROVISION_PROFILE_BASE64 }}
+  # 4. Import the certificate
+  security import $CERT_PATH \
+    -P "$P12_PASSWORD" \
+    -A -t cert -f pkcs12 \
+    -k $KEYCHAIN_PATH
 
-        run: |
-          CERT_PATH=$RUNNER_TEMP/cert.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app.keychain-db
-
-          CLIENT_PP_PATH=$RUNNER_TEMP/client.mobileprovision
-          CAPTAIN_PP_PATH=$RUNNER_TEMP/captain.mobileprovision
-
-          # Decode certificate
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERT_PATH
-
-          # Decode provisioning profiles
-          echo -n "$CLIENT_PROVISION_PROFILE_BASE64" | base64 --decode -o $CLIENT_PP_PATH
-          echo -n "$CAPTAIN_PROVISION_PROFILE_BASE64" | base64 --decode -o $CAPTAIN_PP_PATH
-
-          # Create temporary keychain
-          security create-keychain -p "" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "" $KEYCHAIN_PATH
-
-          # Import certificate
-          security import $CERT_PATH \
-            -P "$P12_PASSWORD" \
-            -A -t cert -f pkcs12 \
-            -k $KEYCHAIN_PATH
-
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
-          # Install provisioning profiles
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $CLIENT_PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/client.mobileprovision
-          cp $CAPTAIN_PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/captain.mobileprovision
-
-      # 3. Build Client App
-      - name: Build Client App
-        run: |
-          cd ClientApp
-          xcodebuild \
-            -scheme ClientApp \
-            -sdk iphoneos \
-            build
-
-      # 4. Build Captain App
-      - name: Build Captain App
-        run: |
-          cd CaptainApp
-          xcodebuild \
-            -scheme CaptainApp \
-            -sdk iphoneos \
-            build
+  # 5. CRITICAL: Allow xcodebuild to access the keychain without a UI prompt
+  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" $KEYCHAIN_PATH
+  
+  # 6. Set as default keychain so xcodebuild finds it
+  security default-keychain -s $KEYCHAIN_PATH
