@@ -1,41 +1,223 @@
-name: iOS Build (Client + Captain)
+name: Publish iOS Apps to TestFlight
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
-  build:
+  publish:
     runs-on: macos-latest
 
+    env:
+      DEVELOPER_TEAM_ID: 2X73TPG2SN
+      ASC_API_KEY_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+      ASC_API_KEY_BASE64: ${{ secrets.APPSTORE_CONNECT_API_KEY_BASE64 }}
+
     steps:
-      # 1. Checkout the source code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Build the Client App without signing.
-      - name: Build Client App
-        run: |
-          cd ClientApp
-          xcodebuild -scheme ClientApp \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -configuration Release \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
 
-      # 3. Build the Captain App without signing.
-      - name: Build Captain App
+      - name: Validate required secrets
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          CLIENT_PROVISION_PROFILE_BASE64: ${{ secrets.CLIENT_PROVISION_PROFILE_BASE64 }}
+          CAPTAIN_PROVISION_PROFILE_BASE64: ${{ secrets.CAPTAIN_PROVISION_PROFILE_BASE64 }}
         run: |
-          cd CaptainApp
-          xcodebuild -scheme CaptainApp \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
+          set -euo pipefail
+
+          missing=()
+
+          [ -n "${BUILD_CERTIFICATE_BASE64:-}" ] || missing+=("BUILD_CERTIFICATE_BASE64")
+          [ -n "${P12_PASSWORD:-}" ] || missing+=("P12_PASSWORD")
+          [ -n "${CLIENT_PROVISION_PROFILE_BASE64:-}" ] || missing+=("CLIENT_PROVISION_PROFILE_BASE64")
+          [ -n "${CAPTAIN_PROVISION_PROFILE_BASE64:-}" ] || missing+=("CAPTAIN_PROVISION_PROFILE_BASE64")
+          [ -n "${ASC_API_KEY_ID:-}" ] || missing+=("APPSTORE_CONNECT_API_KEY_ID")
+          [ -n "${ASC_API_ISSUER_ID:-}" ] || missing+=("APPSTORE_CONNECT_ISSUER_ID")
+          [ -n "${ASC_API_KEY_BASE64:-}" ] || missing+=("APPSTORE_CONNECT_API_KEY_BASE64")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing GitHub Actions secrets:"
+            printf ' - %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+      - name: Install signing assets
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          CLIENT_PROVISION_PROFILE_BASE64: ${{ secrets.CLIENT_PROVISION_PROFILE_BASE64 }}
+          CAPTAIN_PROVISION_PROFILE_BASE64: ${{ secrets.CAPTAIN_PROVISION_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          API_KEYS_DIR="$HOME/private_keys"
+
+          echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+
+          mkdir -p "$PROFILES_DIR" "$API_KEYS_DIR"
+          echo "$CLIENT_PROVISION_PROFILE_BASE64" | base64 --decode > "$PROFILES_DIR/client.mobileprovision"
+          echo "$CAPTAIN_PROVISION_PROFILE_BASE64" | base64 --decode > "$PROFILES_DIR/captain.mobileprovision"
+          echo "$ASC_API_KEY_BASE64" | base64 --decode > "$API_KEYS_DIR/AuthKey_${ASC_API_KEY_ID}.p8"
+          chmod 600 "$API_KEYS_DIR/AuthKey_${ASC_API_KEY_ID}.p8"
+
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Read provisioning profile details
+        run: |
+          set -euo pipefail
+
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          CLIENT_PROFILE_PLIST="$RUNNER_TEMP/client_profile.plist"
+          CAPTAIN_PROFILE_PLIST="$RUNNER_TEMP/captain_profile.plist"
+
+          security cms -D -i "$PROFILES_DIR/client.mobileprovision" > "$CLIENT_PROFILE_PLIST"
+          security cms -D -i "$PROFILES_DIR/captain.mobileprovision" > "$CAPTAIN_PROFILE_PLIST"
+
+          echo "CLIENT_PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$CLIENT_PROFILE_PLIST")" >> "$GITHUB_ENV"
+          echo "CLIENT_PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$CLIENT_PROFILE_PLIST")" >> "$GITHUB_ENV"
+          echo "CAPTAIN_PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$CAPTAIN_PROFILE_PLIST")" >> "$GITHUB_ENV"
+          echo "CAPTAIN_PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$CAPTAIN_PROFILE_PLIST")" >> "$GITHUB_ENV"
+
+      - name: Archive ClientApp
+        run: |
+          set -euo pipefail
+
+          xcodebuild archive \
+            -project ClientApp/ClientApp.xcodeproj \
+            -scheme ClientApp \
             -configuration Release \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/ClientApp.xcarchive" \
+            DEVELOPMENT_TEAM="$DEVELOPER_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE="$CLIENT_PROFILE_UUID" \
+            PROVISIONING_PROFILE_SPECIFIER="$CLIENT_PROFILE_NAME"
+
+      - name: Export ClientApp IPA
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/ClientAppExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.ladytaxi.ClientApp</key>
+              <string>${CLIENT_PROFILE_NAME}</string>
+            </dict>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${DEVELOPER_TEAM_ID}</string>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/ClientApp.xcarchive" \
+            -exportPath "$RUNNER_TEMP/ClientApp-export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ClientAppExportOptions.plist"
+
+      - name: Upload ClientApp to TestFlight
+        run: |
+          set -euo pipefail
+
+          xcrun altool \
+            --upload-app \
+            --type ios \
+            --file "$RUNNER_TEMP/ClientApp-export/ClientApp.ipa" \
+            --apiKey "$ASC_API_KEY_ID" \
+            --apiIssuer "$ASC_API_ISSUER_ID"
+
+      - name: Archive CaptainApp
+        run: |
+          set -euo pipefail
+
+          xcodebuild archive \
+            -project CaptainApp/CaptainApp.xcodeproj \
+            -scheme CaptainApp \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/CaptainApp.xcarchive" \
+            DEVELOPMENT_TEAM="$DEVELOPER_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE="$CAPTAIN_PROFILE_UUID" \
+            PROVISIONING_PROFILE_SPECIFIER="$CAPTAIN_PROFILE_NAME"
+
+      - name: Export CaptainApp IPA
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/CaptainAppExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>ladyTaxi.CaptainApp</key>
+              <string>${CAPTAIN_PROFILE_NAME}</string>
+            </dict>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${DEVELOPER_TEAM_ID}</string>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/CaptainApp.xcarchive" \
+            -exportPath "$RUNNER_TEMP/CaptainApp-export" \
+            -exportOptionsPlist "$RUNNER_TEMP/CaptainAppExportOptions.plist"
+
+      - name: Upload CaptainApp to TestFlight
+        run: |
+          set -euo pipefail
+
+          xcrun altool \
+            --upload-app \
+            --type ios \
+            --file "$RUNNER_TEMP/CaptainApp-export/CaptainApp.ipa" \
+            --apiKey "$ASC_API_KEY_ID" \
+            --apiIssuer "$ASC_API_ISSUER_ID"
+
+      - name: Upload exported IPAs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-testflight-ipas
+          path: |
+            ${{ runner.temp }}/ClientApp-export/*.ipa
+            ${{ runner.temp }}/CaptainApp-export/*.ipa
