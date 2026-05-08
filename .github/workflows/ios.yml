@@ -3,18 +3,18 @@ name: iOS Build (Client + Captain)
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # Allows you to run this manually from the Actions tab
+  workflow_dispatch: 
 
 jobs:
   build:
     runs-on: macos-latest
 
     steps:
-      # 1. Get the source code from your repo
+      # 1. Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Setup the signing environment (The part you shared)
+      # 2. Install certificate and provisioning profiles
       - name: Install Signing Certificates
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
@@ -22,13 +22,17 @@ jobs:
           CLIENT_PROVISION_PROFILE_BASE64: ${{ secrets.CLIENT_PROVISION_PROFILE_BASE64 }}
           CAPTAIN_PROVISION_PROFILE_BASE64: ${{ secrets.CAPTAIN_PROVISION_PROFILE_BASE64 }}
         run: |
+          # Define temporary variables
           CERT_PATH=$RUNNER_TEMP/build_certificate.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/app.keychain-db
 
-          # Decode the files from your GitHub Secrets
+          # Decode the P12 certificate
           echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > $CERT_PATH
-          
+
+          # Create the Provisioning Profiles directory
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+
+          # Decode provisioning profiles (naming them 'client' and 'captain' for easy reference)
           echo "$CLIENT_PROVISION_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/client.mobileprovision
           echo "$CAPTAIN_PROVISION_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/captain.mobileprovision
 
@@ -37,10 +41,13 @@ jobs:
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "" $KEYCHAIN_PATH
 
-          # Import the certificate
-          security import $CERT_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          
-          # Fix for permission popups
+          # Import the certificate into the temporary keychain
+          security import $CERT_PATH \
+            -P "$P12_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k $KEYCHAIN_PATH
+
+          # CRITICAL: Fix for the "User interaction is not allowed" error
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" $KEYCHAIN_PATH
           security default-keychain -s $KEYCHAIN_PATH
 
@@ -48,10 +55,22 @@ jobs:
       - name: Build Client App
         run: |
           cd ClientApp
-          xcodebuild -scheme ClientApp -sdk iphoneos build
+          xcodebuild -scheme ClientApp \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="client" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            build
 
       # 4. Build the Captain App
       - name: Build Captain App
         run: |
           cd CaptainApp
-          xcodebuild -scheme CaptainApp -sdk iphoneos build
+          xcodebuild -scheme CaptainApp \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="captain" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            build
