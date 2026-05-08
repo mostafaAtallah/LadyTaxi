@@ -200,7 +200,7 @@ jobs:
             <string>app-store</string>
             <key>provisioningProfiles</key>
             <dict>
-              <key>ladyTaxi.CaptainApp</key>
+              <key>com.ladyTaxi.CaptainApp</key>
               <string>${CAPTAIN_PROFILE_NAME}</string>
             </dict>
             <key>signingCertificate</key>
