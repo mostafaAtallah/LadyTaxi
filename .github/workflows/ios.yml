@@ -7,7 +7,7 @@ on:
 
 jobs:
   publish:
-    runs-on: macos-latest
+    runs-on: macos-26
 
     env:
       DEVELOPER_TEAM_ID: 2X73TPG2SN

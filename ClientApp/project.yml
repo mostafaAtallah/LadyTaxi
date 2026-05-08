@@ -8,6 +8,7 @@ options:
 
 settings:
   base:
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     SWIFT_VERSION: 5.9
     GENERATE_INFOPLIST_FILE: YES
     PRODUCT_NAME: ClientApp

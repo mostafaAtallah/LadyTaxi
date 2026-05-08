@@ -533,6 +533,7 @@
 		33FFC899DA203EB43C190016 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				DEVELOPMENT_TEAM = 2X73TPG2SN;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ClientApp/Info.plist;
@@ -553,6 +554,7 @@
 		B58843398B5DA5524A1E3FE6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				DEVELOPMENT_TEAM = 2X73TPG2SN;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ClientApp/Info.plist;
