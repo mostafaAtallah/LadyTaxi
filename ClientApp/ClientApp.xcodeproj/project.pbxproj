@@ -515,7 +515,7 @@
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_NAME = ClientApp;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
@@ -570,7 +570,7 @@
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_NAME = ClientApp;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
