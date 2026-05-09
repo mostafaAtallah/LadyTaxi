@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit // Added import
+import CoreLocation
 
 private enum HomeTab {
     case home
@@ -498,7 +499,7 @@ struct FloatingActionButton: View {
 }
 
 // MARK: - Supporting View Models/Models
-class HomeViewModel: ObservableObject {
+class HomeViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var currentLocation: CLLocation?
     @Published var currentLocationName: String?
     @Published var pickupAddress: String?
@@ -507,8 +508,13 @@ class HomeViewModel: ObservableObject {
     @Published var dropoffLocation: LocationCoordinate?
     @Published var annotations: [MapPoint] = [] // Changed to MapPoint
     private var observers: [NSObjectProtocol] = []
+    private let locationManager = CLLocationManager()
+    private let geocodingService = HomeGeocodingService()
 
-    init() {
+    override init() {
+        super.init()
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
         registerLocationObservers()
         loadPersistedLocations()
     }
@@ -535,11 +541,16 @@ class HomeViewModel: ObservableObject {
     }
 
     func requestLocation() {
-        // Simulate location request
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            let location = CLLocation(latitude: 40.7128, longitude: -74.0060)
-            self.currentLocation = location
-            self.resolveCurrentLocationName(from: location)
+        let status = locationManager.authorizationStatus
+        switch status {
+        case .notDetermined:
+            locationManager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse, .authorizedAlways:
+            locationManager.requestLocation()
+        case .restricted, .denied:
+            currentLocationName = L10n.t("search_location.use_current")
+        @unknown default:
+            break
         }
     }
 
@@ -684,25 +695,116 @@ class HomeViewModel: ObservableObject {
     }
 
     private func resolveCurrentLocationName(from location: CLLocation) {
-        CLGeocoder().reverseGeocodeLocation(location) { [weak self] placemarks, _ in
-            guard let self else { return }
-            let placemark = placemarks?.first
+        geocodingService.reverseGeocode(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude) { [weak self] resolvedName in
+            guard let self, let resolvedName, !resolvedName.isEmpty else { return }
+            DispatchQueue.main.async {
+                self.currentLocationName = resolvedName
+            }
+        }
+    }
 
-            let resolvedName = [
-                placemark?.name,
-                placemark?.locality,
-                placemark?.subLocality,
-                placemark?.administrativeArea
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            manager.requestLocation()
+        case .denied, .restricted:
+            DispatchQueue.main.async {
+                self.currentLocationName = L10n.t("search_location.use_current")
+            }
+        case .notDetermined:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+
+        DispatchQueue.main.async {
+            self.currentLocation = location
+        }
+        resolveCurrentLocationName(from: location)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Failed to get current location: \(error.localizedDescription)")
+    }
+}
+
+private final class HomeGeocodingService {
+    func reverseGeocode(latitude: Double, longitude: Double, completion: @escaping (String?) -> Void) {
+        var components = URLComponents(string: ApiConstants.baseUrl + ApiConstants.reverseGeocode)
+        components?.queryItems = [
+            URLQueryItem(name: "lat", value: String(latitude)),
+            URLQueryItem(name: "lng", value: String(longitude))
+        ]
+
+        guard let url = components?.url else {
+            completion(nil)
+            return
+        }
+
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if error != nil {
+                completion(nil)
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode),
+                  let data else {
+                completion(nil)
+                return
+            }
+
+            do {
+                let jsonObject = try JSONSerialization.jsonObject(with: data)
+                completion(Self.parseDisplayName(from: jsonObject))
+            } catch {
+                completion(nil)
+            }
+        }.resume()
+    }
+
+    private static func parseDisplayName(from jsonObject: Any) -> String? {
+        if let dict = jsonObject as? [String: Any] {
+            let candidateKeys = [
+                "address",
+                "formattedAddress",
+                "formatted_address",
+                "name",
+                "displayName",
+                "display_name"
             ]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first(where: { !$0.isEmpty })
 
-            if let resolvedName, !resolvedName.isEmpty {
-                DispatchQueue.main.async {
-                    self.currentLocationName = resolvedName
+            for key in candidateKeys {
+                if let value = dict[key] as? String {
+                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        return trimmed
+                    }
+                }
+            }
+
+            if let result = dict["result"] {
+                return parseDisplayName(from: result)
+            }
+
+            if let results = dict["results"] {
+                return parseDisplayName(from: results)
+            }
+        }
+
+        if let array = jsonObject as? [Any] {
+            for item in array {
+                if let parsed = parseDisplayName(from: item) {
+                    return parsed
                 }
             }
         }
+
+        return nil
     }
 }
 

@@ -44,6 +44,10 @@ struct RegisterView: View {
                 TextField("Phone Number", text: $phone)
                     .keyboardType(.phonePad)
                     .textFieldStyle(.roundedBorder)
+                    .onChange(of: phone) { newValue in
+                        let digitsOnly = newValue.filter(\.isNumber)
+                        phone = String(digitsOnly.prefix(20))
+                    }
 
                 // MARK: - Email
                 TextField("Email Address", text: $email)
@@ -149,6 +153,7 @@ struct RegisterView: View {
         guard !firstName.isEmpty,
               !familyName.isEmpty,
               phone.count >= 10,
+              phone.count <= 20,
               email.contains("@"),
               password.count >= 6,
               password == confirmPassword,
